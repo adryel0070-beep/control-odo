@@ -16,35 +16,45 @@
   </div>
 
   <!-- CARD PRINCIPAL -->
-  <div class="card" style="max-width: 520px; margin: auto;">
+  <div class="card" style="max-width:520px; margin:auto;">
 
+    <!-- PACIENTE -->
     <label>Paciente</label>
     <select id="paciente">
-      <button
-  style="margin-top:8px; background:#111; color:#fff;"
-  onclick="window.location.href='paciente.html'">
-  + Cadastrar novo paciente
-</button>
       <option value="">Selecione o paciente</option>
     </select>
 
+    <button
+      style="margin-top:8px; background:#111; color:#fff;"
+      onclick="window.location.href='paciente.html'">
+      + Cadastrar novo paciente
+    </button>
+
     <br><br>
 
+    <!-- DATA -->
     <label>Data</label>
     <input type="date" id="data">
 
     <br><br>
 
+    <!-- HORA -->
     <label>Hora</label>
     <input type="time" id="hora">
 
     <br><br>
 
+    <!-- PROCEDIMENTO -->
     <label>Descrição do Atendimento</label>
-    <textarea id="procedimento" rows="4" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);"></textarea>
+    <textarea
+      id="procedimento"
+      rows="4"
+      style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+    </textarea>
 
     <br><br>
 
+    <!-- AÇÕES -->
     <div style="display:flex; gap:12px; justify-content:flex-end;">
       <button id="voltar" style="background:#e5e7eb; color:#111;">Voltar</button>
       <button id="salvar">Salvar Atendimento</button>
@@ -67,13 +77,13 @@
     // ===== CARREGAR PACIENTES =====
     const { data: pacientes, error } = await supabase
       .from('paciente')
-      .select('*')
+      .select('id_paciente, nome')
       .order('nome')
 
     if (error) {
       msg.textContent = 'Erro ao carregar pacientes'
       console.error(error)
-    } else if (Array.isArray(pacientes)) {
+    } else {
       pacientes.forEach(p => {
         const option = document.createElement('option')
         option.value = p.id_paciente
@@ -124,4 +134,3 @@
 
 </body>
 </html>
-
