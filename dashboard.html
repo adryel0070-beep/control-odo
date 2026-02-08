@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard | Controle Odontológico</title>
+  <link rel="stylesheet" href="./css/global.css">
+</head>
+<body>
+
+  <div class="header">
+    <h2>Controle Odontológico</h2>
+    <div>
+      <span class="jackt">Jackt Lab</span>
+      <button id="logout" class="btn-outline">Sair</button>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <div class="top-actions">
+      <h3>Atendimentos</h3>
+      <button id="novo">+ Novo Atendimento</button>
+    </div>
+
+    <div class="card" style="margin-top:20px;">
+      <div class="filters">
+        <div>
+          <label>Procedimento</label>
+          <select id="filtroProcedimento">
+            <option value="">Todos</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Paciente</label>
+          <select id="filtroPaciente">
+            <option value="">Todos</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Data</label>
+          <input type="date" id="filtroData">
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px;">
+      <ul id="lista" class="lista-atendimentos"></ul>
+    </div>
+
+  </div>
+
+  <script type="module">
+    import { supabase } from './js/supabase.js'
+    import { protegerPagina } from './js/auth.js'
+
+    await protegerPagina()
+
+    document.getElementById('logout').onclick = async () => {
+      await supabase.auth.signOut()
+      window.location.href = 'index.html'
+    }
+
+    document.getElementById('novo').onclick = () => {
+      window.location.href = 'atendimento.html'
+    }
+
+    const { data: atendimentos } = await supabase
+      .from('atendimento')
+      .select(`id_atendimento, data_atendimento, hora_inicio, procedimento, id_paciente, paciente(nome)`)
+      .order('data_atendimento', { ascending: false })
+
+    const lista = document.getElementById('lista')
+    const filtroProcedimento = document.getElementById('filtroProcedimento')
+    const filtroPaciente = document.getElementById('filtroPaciente')
+    const filtroData = document.getElementById('filtroData')
+
+    const procedimentos = [...new Set(atendimentos.map(a => a.procedimento).filter(Boolean))]
+    procedimentos.forEach(p => filtroProcedimento.add(new Option(p, p)))
+
+    const pacientes = {}
+    atendimentos.forEach(a => pacientes[a.id_paciente] = a.paciente.nome)
+    Object.entries(pacientes).forEach(([id, nome]) => filtroPaciente.add(new Option(nome, id)))
+
+    function render() {
+      lista.innerHTML = ''
+      atendimentos
+        .filter(a =>
+          (!filtroProcedimento.value || a.procedimento === filtroProcedimento.value) &&
+          (!filtroPaciente.value || a.id_paciente == filtroPaciente.value) &&
+          (!filtroData.value || a.data_atendimento === filtroData.value)
+        )
+        .forEach(a => {
+          const li = document.createElement('li')
+          li.className = 'item-atendimento'
+          li.innerHTML = `
+            <div>
+              <strong>${a.paciente.nome}</strong><br>
+              ${a.procedimento}
+            </div>
+            <div>
+              <small>${a.data_atendimento} ${a.hora_inicio}</small><br>
+              <button class="btn-outline fotos">Fotos</button>
+              <button class="btn-outline historico">Histórico</button>
+            </div>
+          `
+          li.querySelector('.fotos').onclick = () =>
+            window.location.href = `upload.html?id=${a.id_atendimento}`
+          li.querySelector('.historico').onclick = () =>
+            window.location.href = `historico.html?id_paciente=${a.id_paciente}`
+
+          lista.appendChild(li)
+        })
+    }
+
+    render()
+    filtroProcedimento.onchange = filtroPaciente.onchange = filtroData.onchange = render
+  </script>
+
+</body>
+</html>

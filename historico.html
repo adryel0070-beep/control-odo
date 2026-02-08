@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Histórico do Paciente | Controle Odontológico</title>
+
+  <!-- Global CSS -->
+  <link rel="stylesheet" href="./css/global.css">
+
+  <!-- PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <!-- CSS ESPECÍFICO DA PÁGINA -->
+  <style>
+    /* ===== TIMELINE ===== */
+    .timeline {
+      border-left: 3px solid var(--primary);
+      padding-left: 20px;
+      margin-top: 20px;
+    }
+
+    .card {
+      position: relative;
+      page-break-inside: avoid;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      left: -31px;
+      top: 25px;
+      width: 14px;
+      height: 14px;
+      background: var(--primary);
+      border-radius: 50%;
+    }
+
+    .data {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .procedimento {
+      color: var(--muted);
+      margin-bottom: 15px;
+    }
+
+    /* ===== SLIDER ===== */
+    .slider-container {
+      display: flex;
+      gap: 30px;
+      margin-bottom: 20px;
+    }
+
+    .compare {
+      position: relative;
+      width: 260px;
+      height: 180px;
+      overflow: hidden;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+    }
+
+    .compare img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .compare .depois {
+      z-index: 2;
+    }
+
+    .compare input {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      width: calc(100% - 20px);
+      z-index: 3;
+    }
+
+    /* ===== GALERIA ===== */
+    .fotos {
+      display: flex;
+      gap: 30px;
+      margin-top: 10px;
+    }
+
+    .galeria img {
+      width: 110px;
+      border-radius: 8px;
+      margin: 4px;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+    }
+
+    /* ===== MODAL ===== */
+    #modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      justify-content: center;
+      align-items: center;
+      z-index: 999;
+    }
+
+    #modal img {
+      max-width: 90%;
+      max-height: 90%;
+      border-radius: 10px;
+    }
+
+    /* ===== PDF / PRINT ===== */
+    @media print {
+      button,
+      .header {
+        display: none;
+      }
+
+      .compare input {
+        display: none;
+      }
+
+      .compare img {
+        position: static;
+        height: auto;
+      }
+
+      .compare {
+        height: auto;
+        overflow: visible;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <h2>Histórico do Paciente</h2>
+    <span class="jackt">Jackt Lab</span>
+  </div>
+
+  <!-- AÇÕES -->
+  <div class="card">
+    <button id="exportarPdf">Exportar PDF</button>
+    <button class="btn-outline" onclick="history.back()">Voltar</button>
+  </div>
+
+  <!-- CONTEÚDO -->
+  <div id="conteudoPdf">
+    <div class="timeline" id="conteudo"></div>
+  </div>
+
+  <!-- MODAL -->
+  <div id="modal" onclick="this.style.display='none'">
+    <img id="modalImg">
+  </div>
+
+  <!-- SCRIPT -->
+  <script type="module">
+    import { supabase } from './js/supabase.js'
+    import { protegerPagina } from './js/auth.js'
+
+    await protegerPagina()
+
+    const params = new URLSearchParams(window.location.search)
+    const id_paciente = params.get('id_paciente')
+
+    const { data: atendimentos, error } = await supabase
+      .from('atendimento')
+      .select(`
+        id_atendimento,
+        data_atendimento,
+        hora_inicio,
+        procedimento,
+        arquivo (
+          tipo,
+          url_arquivo,
+          created_at
+        )
+      `)
+      .eq('id_paciente', id_paciente)
+      .order('data_atendimento')
+
+    if (error) {
+      alert('Erro ao carregar histórico')
+      throw error
+    }
+
+    const container = document.getElementById('conteudo')
+
+    for (const a of atendimentos) {
+      const card = document.createElement('div')
+      card.className = 'card'
+
+      card.innerHTML = `
+        <div class="data">${a.data_atendimento} ${a.hora_inicio}</div>
+        <div class="procedimento">${a.procedimento}</div>
+
+        <div class="slider-container" id="slider-${a.id_atendimento}"></div>
+
+        <div class="fotos">
+          <div>
+            <h4>Antes</h4>
+            <div class="galeria" id="antes-${a.id_atendimento}"></div>
+          </div>
+          <div>
+            <h4>Depois</h4>
+            <div class="galeria" id="depois-${a.id_atendimento}"></div>
+          </div>
+        </div>
+      `
+
+      container.appendChild(card)
+
+      const antes = a.arquivo.filter(f => f.tipo === 'antes')
+      const depois = a.arquivo.filter(f => f.tipo === 'depois')
+
+      if (antes.length && depois.length) {
+        const antesUrl = await supabase.storage
+          .from('atendimento')
+          .createSignedUrl(antes[0].url_arquivo, 3600)
+
+        const depoisUrl = await supabase.storage
+          .from('atendimento')
+          .createSignedUrl(depois[depois.length - 1].url_arquivo, 3600)
+
+        const slider = document.createElement('div')
+        slider.className = 'compare'
+
+        slider.innerHTML = `
+          <img src="${antesUrl.data.signedUrl}">
+          <img class="depois" src="${depoisUrl.data.signedUrl}">
+          <input type="range" min="0" max="100" value="0">
+        `
+
+        const depoisImg = slider.querySelector('.depois')
+        const range = slider.querySelector('input')
+
+        depoisImg.style.clipPath = 'inset(0 100% 0 0)'
+
+        range.oninput = e => {
+          const v = e.target.value
+          depoisImg.style.clipPath = `inset(0 ${100 - v}% 0 0)`
+        }
+
+        document.getElementById(`slider-${a.id_atendimento}`).appendChild(slider)
+      }
+
+      for (const foto of a.arquivo) {
+        const { data } = await supabase.storage
+          .from('atendimento')
+          .createSignedUrl(foto.url_arquivo, 3600)
+
+        const img = document.createElement('img')
+        img.src = data.signedUrl
+        img.onclick = () => {
+          document.getElementById('modalImg').src = img.src
+          document.getElementById('modal').style.display = 'flex'
+        }
+
+        document.getElementById(
+          foto.tipo === 'antes'
+            ? `antes-${a.id_atendimento}`
+            : `depois-${a.id_atendimento}`
+        ).appendChild(img)
+      }
+    }
+
+    document.getElementById('exportarPdf').onclick = () => {
+      html2pdf()
+        .from(document.getElementById('conteudoPdf'))
+        .save('historico-paciente.pdf')
+    }
+  </script>
+
+</body>
+</html>

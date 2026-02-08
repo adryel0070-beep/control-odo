@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload de Fotos | Controle Odontológico</title>
+
+  <!-- Global CSS -->
+  <link rel="stylesheet" href="./css/global.css">
+
+  <!-- CSS ESPECÍFICO DA PÁGINA -->
+  <style>
+    .container {
+      max-width: 900px;
+      margin: auto;
+    }
+
+    .form-upload {
+      display: grid;
+      grid-template-columns: 1fr 200px auto;
+      gap: 15px;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .galeria {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-top: 15px;
+    }
+
+    .foto {
+      width: 150px;
+      background: var(--card);
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      text-align: center;
+    }
+
+    .foto img {
+      width: 100%;
+      border-radius: 8px;
+    }
+
+    .foto button {
+      margin-top: 8px;
+      width: 100%;
+      background: #ef4444;
+    }
+
+    .foto button:hover {
+      background: #dc2626;
+    }
+
+    @media (max-width: 700px) {
+      .form-upload {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <h2>Fotos do Atendimento</h2>
+    <span class="jackt">Jackt Lab</span>
+  </div>
+
+  <!-- CONTEÚDO -->
+  <div class="container">
+
+    <!-- AÇÕES -->
+    <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
+      <button class="btn-outline" id="voltar">← Voltar</button>
+      <strong>Upload de imagens</strong>
+    </div>
+
+    <!-- FORM UPLOAD -->
+    <div class="card">
+      <div class="form-upload">
+        <input type="file" id="arquivo" accept="image/*">
+
+        <select id="tipo">
+          <option value="antes">Antes</option>
+          <option value="depois">Depois</option>
+        </select>
+
+        <button id="enviar">Enviar</button>
+      </div>
+
+      <p id="msg" style="color:var(--muted);"></p>
+    </div>
+
+    <!-- GALERIA -->
+    <div class="card">
+      <h3>Antes</h3>
+      <div id="antes" class="galeria"></div>
+
+      <h3 style="margin-top:30px;">Depois</h3>
+      <div id="depois" class="galeria"></div>
+    </div>
+
+  </div>
+
+  <!-- SCRIPT -->
+  <script type="module">
+    import { supabase } from './js/supabase.js'
+    import { protegerPagina } from './js/auth.js'
+
+    await protegerPagina()
+
+    const params = new URLSearchParams(window.location.search)
+    const id_atendimento = params.get('id')
+    const msg = document.getElementById('msg')
+
+    async function carregarFotos() {
+      const { data: fotos, error } = await supabase
+        .from('arquivo')
+        .select('*')
+        .eq('id_atendimento', id_atendimento)
+        .order('created_at')
+
+      if (error) return
+
+      const divAntes = document.getElementById('antes')
+      const divDepois = document.getElementById('depois')
+
+      divAntes.innerHTML = ''
+      divDepois.innerHTML = ''
+
+      for (const foto of fotos) {
+        const { data: urlData } = await supabase.storage
+          .from('atendimento')
+          .createSignedUrl(foto.url_arquivo, 3600)
+
+        const wrapper = document.createElement('div')
+        wrapper.className = 'foto'
+
+        const img = document.createElement('img')
+        img.src = urlData.signedUrl
+
+        const btnExcluir = document.createElement('button')
+        btnExcluir.textContent = '🗑️ Excluir'
+
+        btnExcluir.onclick = async () => {
+          if (!confirm('Deseja realmente excluir esta foto?')) return
+
+          await supabase.storage.from('atendimento').remove([foto.url_arquivo])
+          await supabase.from('arquivo').delete().eq('id_arquivo', foto.id_arquivo)
+          await carregarFotos()
+        }
+
+        wrapper.appendChild(img)
+        wrapper.appendChild(btnExcluir)
+
+        if (foto.tipo === 'antes') {
+          divAntes.appendChild(wrapper)
+        } else {
+          divDepois.appendChild(wrapper)
+        }
+      }
+    }
+
+    await carregarFotos()
+
+    document.getElementById('enviar').onclick = async () => {
+      const fileInput = document.getElementById('arquivo')
+      const file = fileInput.files[0]
+
+      if (!file) {
+        msg.textContent = 'Selecione uma imagem'
+        return
+      }
+
+      const { data: { user } } = await supabase.auth.getUser()
+      const caminho = `${user.id}/${id_atendimento}/${Date.now()}_${file.name}`
+
+      const { error: uploadError } = await supabase
+        .storage
+        .from('atendimento')
+        .upload(caminho, file)
+
+      if (uploadError) {
+        msg.textContent = uploadError.message
+        return
+      }
+
+      const { error: insertError } = await supabase
+        .from('arquivo')
+        .insert({
+          id_atendimento,
+          id_usuaria_uuid: user.id,
+          tipo: document.getElementById('tipo').value,
+          nome_arquivo: file.name,
+          url_arquivo: caminho
+        })
+
+      if (insertError) {
+        msg.textContent = insertError.message
+      } else {
+        msg.textContent = 'Upload realizado com sucesso'
+        fileInput.value = ''
+        await carregarFotos()
+      }
+    }
+
+    document.getElementById('voltar').onclick = () => {
+      history.back()
+    }
+  </script>
+
+</body>
+</html>
